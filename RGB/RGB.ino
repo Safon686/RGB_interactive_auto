@@ -1,97 +1,110 @@
 uint32_t timer, timer_button, timer_button2;
-int interval = 20;
-int bright = 0;
-int dif = 60;
-
+int interval = 5;                   //шаг таймера
+int bright;                         //величина ШИМ в канал цвета
+int dif;                            //лимит ШИП для яркости, можно изменять удерживая кнопку
+bool flag;                          //переменная состояния кнопки
 void setup() {
   Serial.begin(9600);
-  pinMode(9, OUTPUT);
-  pinMode(10, OUTPUT);
-  pinMode(11, OUTPUT);
-  pinMode (5, INPUT);
-  pinMode (8, INPUT);
-  pinMode (6, INPUT);
-  pinMode (7, INPUT);
-  analogWrite(9, 0);
-  analogWrite(10, 0);
-  analogWrite(11, 0);
-  pinMode (5, HIGH);
-  digitalWrite(6, HIGH);
-  digitalWrite(7, HIGH);
-  digitalWrite(8, HIGH);
-  timer = millis();
-  timer_button = millis(); //таймер опроса кнопки
-  timer_button2 = millis(); //таймер коррекции яркости по кнопке
-  long previosmillis = 0;
+  pinMode(9, OUTPUT);               //красный канал
+  pinMode(10, OUTPUT);              //Зеленый канал
+  pinMode(11, OUTPUT);              //Синий канал
+  pinMode (5, INPUT);               //Кнопка
+  pinMode (8, INPUT);               //пин считывания входящего сигнала с реле 5в,реле сигнал с 12в освещения салона
+  pinMode (6, INPUT);               //пин под пустое реле
+  pinMode (7, INPUT);               //пин под пустое реле
+  analogWrite(9, 0);                //сток значение яркости канала
+  analogWrite(10, 0);               //сток значение яркости канала
+  analogWrite(11, 0);               //сток значение яркости канала
+  pinMode (5, LOW);
+  digitalWrite(6, LOW);
+  digitalWrite(7, LOW);
+  digitalWrite(8, LOW);
+  timer = millis();                 //таймер для многопточности :D
+  dif = 60;                         //даем дефолт, можно будет потом брать с памяти
+  bright = 0;                       //дефолт яркости, можно будет потом брать с памяти
+  flag = false;                     //флаг смены функции кнопки
 }
 
-void fun_bright_high (int channel1, int channel2, int channel3) {
-  if (dif > bright >= 1) {
+void fun_bright_high (int channel1, int channel2, int channel3) {     //плавно поднимаем яркость
+  if ((bright >= 0) && (bright < dif)) {
     if (millis() - timer > interval) {
       analogWrite(channel1, bright);
       analogWrite(channel2, bright);
       analogWrite(channel3, bright);
-      //Serial.println(bright);
+      ;
       bright++;
-
+      timer = millis();
     }
   }
-  if (bright >= dif) {
-    analogWrite(channel1, bright);
-    analogWrite(channel2, bright);
-    analogWrite(channel3, bright);
-  }
-}
-void fun_bright_low (int channel1, int channel2, int channel3) {
-  if (999 > bright >= 1) {
-    if (millis() - timer > interval) {
+  else {
+    if ((millis() - timer > interval) && (bright >= 0) && (bright != dif)) { //контролируем, что записанная яркость не выше порога,
+      analogWrite(channel1, bright);                                         //если выше, то уменьшаем
       analogWrite(channel2, bright);
       analogWrite(channel3, bright);
-      //Serial.println(bright);
       bright--;
       timer = millis();
     }
   }
-  if (bright == 0) {
-    analogWrite(channel2, bright);
-    analogWrite(channel3, bright);
+}
+void fun_bright_low (int channel1, int channel2, int channel3) {          //плавно уменьшаем яркость синего и зеленого канала
+  if ((bright >= 1) && (bright < 9999)) {
+    if (millis() - timer > interval) {
+      analogWrite(channel1, bright);
+      analogWrite(channel2, bright);
+      analogWrite(channel3, bright);
+      bright--;
+      timer = millis();
+    }
+  }
+  else {
+    if ((millis() - timer > interval) && (bright < 260) && (bright != 0)) {   //контролируем, что записанная яркость не ниже порога,
+      analogWrite(channel1, bright);                                          //если ниже, то поднимаем
+      analogWrite(channel2, bright);
+      analogWrite(channel3, bright);
+      bright++;
+      timer = millis();
+    }
   }
 }
 void loop() {
-  int Light_status = digitalRead(8);
-  static bool flag = false; //переменная состояния нажатия кнопки
-  bool button = digitalRead(5); //читаем кнопку
-  if (button && !flag && millis() - timer_button > 200) { //корекция нажатия
-    flag  = true; //поднимаем флаг
-    timer_button = millis();
-    Serial.println("Click!");
-
-  }
-  if (button && !flag && millis() - timer_button > 800) { //состояни удержание кнопки
-    timer_button = millis();
-    Serial.println("Hold!");
-    if (millis() - timer_button2 >= interval) {
-      timer_button2 = millis();
-      dif++;                                          //при удержании увеличиваем дефолтную яркость
+  int Light_status = digitalRead(8);                    //читаем 5в с реле
+  bool button = digitalRead(5);                         //читаем кнопку
+  //Serial.println(flag);
+  //Serial.println(dif);
+  //Serial.println(Light_status);
+  //Serial.println(bright);
+  /* if (button && !flag && millis() - timer_button > 500) { //корекция нажатия
+     flag  = true; //поднимаем флаг
+     timer_button = millis();
+     Serial.println("Click!");
+    } */
+  if (button && !flag && millis() - timer_button > 100) {       //состояни удержание кнопки
+    Serial.println("Hold+!");
+    if (millis() - timer_button >= interval) {
+      timer_button = millis();
+      dif = dif + 10;                                            //при удержании увеличиваем дефолтную яркость
+      if (dif > 240) {
+        flag = true;                                             //по достижении макс ШИМ инвертируем кнопку на функцию понижения ШИМ
+      }
     }
   }
-  if (button && flag && millis() - timer_button > 800) {  //состояни удержание кнопки
-    timer_button = millis();
-    Serial.println("Hold!");
-    if (millis() - timer_button2 >= interval) {
-      timer_button2 = millis();
-      dif--;                                          // //при удержании уменьшаем дефолтную яркость
+  if (button && flag && millis() - timer_button > 100) {        //состояни удержание кнопки
+    Serial.println("Hold!-");
+    if (millis() - timer_button >= interval) {
+      timer_button = millis();
+      dif = dif - 10;                                           //при удержании уменьшаем дефолтную яркость
+      if (dif < 10) {
+        flag = false;                                           //по достижении макс ШИМ инвертируем кнопку на функцию повышения ШИМ
+      }
     }
   }
-  if (!button && flag) {
-    flag  = false;
-  }
-  Serial.println(Light_status);
+  //Serial.println(Light_status);
   if (Light_status == 1) {
     fun_bright_high(9, 10, 11);
   }
-  if (bright != 0)
+  if (Light_status == 0)
   {
     fun_bright_low(0, 10, 11);
+    analogWrite(9, dif);                                        //красная подсветка горит во время движения, интерактивно меняется яркость по функции диф
   }
 }
